@@ -1,13 +1,13 @@
 import pandas as pd
 from pathlib import Path
 
-RAW_DATA_PATH = Path("Farah's\retail_store_inventory.csv")
+RAW_DATA_PATH = Path("data/raw/retail_inventory.csv")
 PROCESSED_DATA_PATH = Path("data/processed/retail_cleaned.csv")
 
 
 def load_raw_data():
     try:
-        df = pd.read_csv("Farah's\retail_store_inventory.csv")
+        df = pd.read_csv(RAW_DATA_PATH)
         print(f"✅ Loaded data: {df.shape}")
         return df
     except FileNotFoundError:
@@ -30,18 +30,8 @@ def basic_cleaning(df):
     df.fillna(method='ffill', inplace=True)
 
     return df
-
-def save_processed_data(df):
-    PROCESSED_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(PROCESSED_DATA_PATH, index=False)
-    print(f"✅ Saved cleaned data to {PROCESSED_DATA_PATH}")
-
-if __name__ == "__main__":
-    df = load_raw_data()
-    df_clean = basic_cleaning(df)
-    save_processed_data(df_clean)
-
-
+# ...existing code...
+import pandas as pd
 COLUMN_RENAME_MAP = {
     "Date": "date", "Store ID": "store_id", "Product ID": "product_id",
     "Category": "category", "Region": "region",
@@ -52,4 +42,22 @@ COLUMN_RENAME_MAP = {
     "Holiday/Promotion": "holiday_or_promo_flag",
     "Competitor Pricing": "competitor_price", "Seasonality": "seasonality",
 }
-df = df.rename(columns=COLUMN_RENAME_MAP)
+# ...existing code...
+def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(columns=COLUMN_RENAME_MAP)
+# ...existing code...
+# usage:
+# df = pd.read_csv("...") 
+# df = rename_columns(df)
+def save_processed_data(df):
+    PROCESSED_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(PROCESSED_DATA_PATH, index=False)
+    print(f"✅ Saved cleaned data to {PROCESSED_DATA_PATH}")
+
+if __name__ == "__main__":
+    df = load_raw_data()
+    df = rename_columns(df)
+    df_clean = basic_cleaning(df)
+    save_processed_data(df_clean)
+
+
