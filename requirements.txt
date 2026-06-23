@@ -1,0 +1,14 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+plotly
+streamlit
+mlflow
+langgraph
+ollama
+sentence-transformers
+pydantic
+pytest
+textblob
+vaderSentiment
