@@ -39,15 +39,34 @@ def basic_cleaning(df):
     df['dataset_demand_forecast'] = df['dataset_demand_forecast'].clip(lower=0)
 
 
-    # Label Encoding , converting text into binary 
-    label_encoder = LabelEncoder()
+    # Label Encoding , converting categorical text values into numerical labels
+    
+    # (Keeping both original version and encoded version)
 
-    df['store_id'] = label_encoder.fit_transform(df['store_id'])
-    df['product_id'] = label_encoder.fit_transform(df['product_id'])
-    df['category'] = label_encoder.fit_transform(df['category'])
-    df['region'] = label_encoder.fit_transform(df['region'])
-    df['weather_condition'] = label_encoder.fit_transform(df['weather_condition'])
-    df['seasonality'] = label_encoder.fit_transform(df['seasonality'])
+    store_encoder = LabelEncoder()
+    product_encoder = LabelEncoder()
+    category_encoder = LabelEncoder()
+    region_encoder = LabelEncoder()
+    weather_encoder = LabelEncoder()
+    season_encoder = LabelEncoder()
+
+    # Store
+    df['store_id_encoded'] = store_encoder.fit_transform(df['store_id'])
+
+    # Product
+    df['product_id_encoded'] = product_encoder.fit_transform(df['product_id'])
+
+    # Category
+    df['category_encoded'] = category_encoder.fit_transform(df['category'])
+
+    # Region
+    df['region_encoded'] = region_encoder.fit_transform(df['region'])
+
+    # Weather
+    df['weather_condition_encoded'] = weather_encoder.fit_transform(df['weather_condition'])
+
+    # Seasonality
+    df['seasonality_encoded'] = season_encoder.fit_transform(df['seasonality'])
 
     # Log Transformations, as units sold and demand forecast values were outliers (there were extreme values from most of its values range)
     df['units_sold_log'] = np.log1p(df['units_sold'])
