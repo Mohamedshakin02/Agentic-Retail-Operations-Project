@@ -21,10 +21,14 @@ so keep them accurate and specific.
 """
 
 from datetime import datetime
+from inventory_risk import calculate_inventory_cover, detect_stockout_risk
+from recommendation import recommend_business_action, recommend_reorder_quantity
+from approval import request_human_approval
 import json
+from typing import Mapping, Any, Optional
 
 
-def get_sales_summary(store_id: str = None, product_id: str = None) -> dict:
+def get_sales_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
     """
     Return total units sold, revenue, and average selling price.
     Optionally filter by store_id and/or product_id.
@@ -39,7 +43,7 @@ def get_sales_summary(store_id: str = None, product_id: str = None) -> dict:
     }
 
 
-def get_inventory_summary(store_id: str = None, product_id: str = None) -> dict:
+def get_inventory_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
     """
     Return current inventory level and average daily sales for a
     store/product combination.
@@ -66,35 +70,35 @@ def forecast_demand(store_id: str, product_id: str) -> dict:
     }
 
 
-def calculate_inventory_cover(current_inventory: float, average_daily_sales: float) -> dict:
-    """
-    Calculate how many days of inventory remain at the current sales pace.
-    inventory_cover_days = current_inventory / average_daily_sales
-    """
-    if average_daily_sales <= 0:
-        cover_days = float("inf")
-    else:
-        cover_days = round(current_inventory / average_daily_sales, 2)
-    return {"inventory_cover_days": cover_days}
+# def calculate_inventory_cover(current_inventory: float, average_daily_sales: float) -> dict:
+#     """
+#     Calculate how many days of inventory remain at the current sales pace.
+#     inventory_cover_days = current_inventory / average_daily_sales
+#     """
+#     if average_daily_sales <= 0:
+#         cover_days = float("inf")
+#     else:
+#         cover_days = round(current_inventory / average_daily_sales, 2)
+#     return {"inventory_cover_days": cover_days}
 
 
-def detect_stockout_risk(inventory_cover_days: float, forecast_7_day_demand: float, current_inventory: float) -> dict:
-    """
-    Classify risk into Critical / Warning / Normal / Overstock,
-    and flag whether forecasted demand exceeds current inventory.
-    """
-    if inventory_cover_days < 2:
-        bucket = "Critical"
-    elif inventory_cover_days < 5:
-        bucket = "Warning"
-    elif inventory_cover_days <= 21:
-        bucket = "Normal"
-    else:
-        bucket = "Overstock"
+# def detect_stockout_risk(inventory_cover_days: float, forecast_7_day_demand: float, current_inventory: float) -> dict:
+#     """
+#     Classify risk into Critical / Warning / Normal / Overstock,
+#     and flag whether forecasted demand exceeds current inventory.
+#     """
+#     if inventory_cover_days < 2:
+#         bucket = "Critical"
+#     elif inventory_cover_days < 5:
+#         bucket = "Warning"
+#     elif inventory_cover_days <= 21:
+#         bucket = "Normal"
+#     else:
+#         bucket = "Overstock"
 
-    stock_out_risk = forecast_7_day_demand > current_inventory
+#     stock_out_risk = forecast_7_day_demand > current_inventory
 
-    return {"risk_bucket": bucket, "stock_out_risk": stock_out_risk}
+#     return {"risk_bucket": bucket, "stock_out_risk": stock_out_risk}
 
 
 def analyze_promotion_impact(product_id: str) -> dict:
@@ -110,29 +114,29 @@ def analyze_promotion_impact(product_id: str) -> dict:
     }
 
 
-def recommend_reorder_quantity(forecast_7_day_demand: float, current_inventory: float) -> int:
-    """
-    Suggest how many units to reorder: forecasted demand minus current stock,
-    floored at zero.
-    """
-    return max(0, round(forecast_7_day_demand - current_inventory))
+# def recommend_reorder_quantity(forecast_7_day_demand: float, current_inventory: float) -> int:
+#     """
+#     Suggest how many units to reorder: forecasted demand minus current stock,
+#     floored at zero.
+#     """
+#     return max(0, round(forecast_7_day_demand - current_inventory))
 
 
-def recommend_business_action(risk_bucket: str, stock_out_risk: bool) -> dict:
-    """
-    Map a risk bucket to a recommended business action and whether
-    human approval is required before acting.
-    """
-    actions = {
-        "Critical": "Reorder urgently",
-        "Warning": "Replenish / monitor",
-        "Normal": "No action",
-        "Overstock": "Review stock / consider markdown",
-    }
-    return {
-        "recommended_action": actions.get(risk_bucket, "No action"),
-        "approval_required": risk_bucket in ("Critical", "Warning"),
-    }
+# def recommend_business_action(risk_bucket: str, stock_out_risk: bool) -> dict:
+#     """
+#     Map a risk bucket to a recommended business action and whether
+#     human approval is required before acting.
+#     """
+#     actions = {
+#         "Critical": "Reorder urgently",
+#         "Warning": "Replenish / monitor",
+#         "Normal": "No action",
+#         "Overstock": "Review stock / consider markdown",
+#     }
+#     return {
+#         "recommended_action": actions.get(risk_bucket, "No action"),
+#         "approval_required": risk_bucket in ("Critical", "Warning"),
+#     }
 
 
 def generate_business_summary(results: dict) -> str:
@@ -150,23 +154,24 @@ def generate_business_summary(results: dict) -> str:
     )
 
 
-def request_human_approval(action_summary: str) -> dict:
-    """
-    Present the recommended action and mark it pending human approval.
-    The actual Approve/Reject click is handled later by the Streamlit UI
-    and approval.py — this just creates the pending record.
-    """
-    return {
-        "action_summary": action_summary,
-        "approval_status": "pending",
-        "requested_at": datetime.now().isoformat(),
-    }
+# def request_human_approval(action_summary: str) -> dict:
+#     """
+#     Present the recommended action and mark it pending human approval.
+#     The actual Approve/Reject click is handled later by the Streamlit UI
+#     and approval.py — this just creates the pending record.
+#     """
+#     return {
+#         "action_summary": action_summary,
+#         "approval_status": "pending",
+#         "requested_at": datetime.now().isoformat(),
+#     }
 
 
 _trace_log = []  # in-memory for now; later this can also write to a file
 
 
-def log_agent_trace(step_name: str, tool_input: dict, tool_output: dict) -> None:
+#def log_agent_trace(step_name: str, tool_input: dict, tool_output: dict) -> None:
+def log_agent_trace(step_name: str, tool_input: Mapping[str, Any], tool_output: Mapping[str, Any]) -> None:
     """
     Record one step of the agent's reasoning, for the Agent Trace UI page.
     """
