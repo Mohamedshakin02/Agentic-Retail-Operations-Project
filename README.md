@@ -8,3 +8,29 @@ add_price_features: Adds % price change vs. the day before
 add_inventory_cover_feature: Adds the days-of-cover number
 add_categorical_encoding: Turns text like "Electronics" into numbers models can use
 build_features:Runs all of the above, in the right order, with a column-check first
+
+Column names list of cleaned data-
+
+['date',
+ 'store_id',
+ 'product_id',
+ 'category',
+ 'region',
+ 'inventory_level',
+ 'units_sold',
+ 'units_ordered',
+ 'dataset_demand_forecast',
+ 'price',
+ 'discount',
+ 'weather_condition',
+ 'holiday_or_promo_flag',
+ 'competitor_price',
+ 'seasonality',
+ 'store_id_encoded',
+ 'product_id_encoded',
+ 'category_encoded',
+ 'region_encoded',
+ 'weather_condition_encoded',
+ 'seasonality_encoded',
+ 'units_sold_log',
+ 'demand_forecast_log']
