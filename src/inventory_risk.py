@@ -34,7 +34,7 @@ Two layers in this file:
 
 import os
 import pandas as pd
-
+from typing import Optional 
 
 # ---------------------------------------------------------------------------
 # Category-aware thresholds
@@ -55,12 +55,17 @@ CATEGORY_RISK_THRESHOLDS = {
 DEFAULT_THRESHOLDS = (2, 5, 21)
 
 
+# def get_thresholds_for_category(category) -> tuple:
+#     """Look up (critical_days, warning_days, normal_max_days) for a category."""
+#     if category is None or (isinstance(category, float) and pd.isna(category)):
+#         return DEFAULT_THRESHOLDS
+#     return CATEGORY_RISK_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
+
 def get_thresholds_for_category(category) -> tuple:
     """Look up (critical_days, warning_days, normal_max_days) for a category."""
-    if category is None or (isinstance(category, float) and pd.isna(category)):
+    if not isinstance(category, str):
         return DEFAULT_THRESHOLDS
     return CATEGORY_RISK_THRESHOLDS.get(category, DEFAULT_THRESHOLDS)
-
 
 # ---------------------------------------------------------------------------
 # 1. Single-item functions
@@ -83,7 +88,7 @@ def detect_stockout_risk(
     inventory_cover_days: float,
     forecast_7_day_demand: float,
     current_inventory: float,
-    category: str = None,
+    category: Optional[str] = None,
 ) -> dict:
     """
     Critical / Warning / Normal / Overstock, using thresholds that vary

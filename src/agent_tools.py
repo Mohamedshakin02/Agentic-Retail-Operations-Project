@@ -25,9 +25,10 @@ from inventory_risk import calculate_inventory_cover, detect_stockout_risk
 from recommendation import recommend_business_action, recommend_reorder_quantity
 from approval import request_human_approval
 import json
+from typing import Mapping, Any, Optional
 
 
-def get_sales_summary(store_id: str = None, product_id: str = None) -> dict:
+def get_sales_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
     """
     Return total units sold, revenue, and average selling price.
     Optionally filter by store_id and/or product_id.
@@ -42,7 +43,7 @@ def get_sales_summary(store_id: str = None, product_id: str = None) -> dict:
     }
 
 
-def get_inventory_summary(store_id: str = None, product_id: str = None) -> dict:
+def get_inventory_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
     """
     Return current inventory level and average daily sales for a
     store/product combination.
@@ -169,7 +170,8 @@ def generate_business_summary(results: dict) -> str:
 _trace_log = []  # in-memory for now; later this can also write to a file
 
 
-def log_agent_trace(step_name: str, tool_input: dict, tool_output: dict) -> None:
+#def log_agent_trace(step_name: str, tool_input: dict, tool_output: dict) -> None:
+def log_agent_trace(step_name: str, tool_input: Mapping[str, Any], tool_output: Mapping[str, Any]) -> None:
     """
     Record one step of the agent's reasoning, for the Agent Trace UI page.
     """

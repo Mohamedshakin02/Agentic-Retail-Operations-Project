@@ -23,6 +23,7 @@ Two layers, same pattern as inventory_risk.py:
 """
 
 import os
+from typing import Optional
 import pandas as pd
 from datetime import datetime
 
@@ -35,7 +36,7 @@ def recommend_business_action(
     risk_bucket: str,
     stock_out_risk: bool,
     holiday_or_promo_flag=None,
-    demand_trend: str = None,
+    demand_trend: Optional[str] = None,
 ) -> dict:
     """
     Map a risk bucket to a recommended action.
