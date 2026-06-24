@@ -79,10 +79,18 @@ def add_categorical_encoding(df: pd.DataFrame) -> pd.DataFrame:
     """
     Label-encode text columns into numbers — fine for tree-based models
     like Random Forest, no need for one-hot encoding here.
+
+    Skips any column whose _encoded version already exists (e.g. a
+    teammate's file already has category_encoded, region_encoded, etc.)
+    so we never silently overwrite someone else's encoding with a
+    different mapping.
     """
     for col in ["category", "region", "weather_condition", "seasonality"]:
-        if col in df.columns:
-            df[f"{col}_encoded"] = df[col].astype("category").cat.codes
+        encoded_col = f"{col}_encoded"
+        if col in df.columns and encoded_col not in df.columns:
+            df[encoded_col] = df[col].astype("category").cat.codes
+        elif encoded_col in df.columns:
+            print(f"Skipping {encoded_col} — already present, leaving it as is.")
     return df
 
 
@@ -138,3 +146,7 @@ if __name__ == "__main__":
         "date", "store_id", "product_id", "units_sold",
         "lag_7_day_sales", "rolling_7_day_avg_sales", "inventory_cover_days"
     ]])
+    os.makedirs("data/processed", exist_ok=True)
+    features_df.to_csv("data/processed/retail_features.csv", index=False)
+    print("\nSaved to data/processed/retail_features.csv")
+    

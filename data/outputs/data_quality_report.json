@@ -1,0 +1,30 @@
+{
+  "shape": {
+    "total_rows": 73100,
+    "total_columns": 23,
+    "date_range": "2022-01-01 to 2024-01-01",
+    "unique_stores": 5,
+    "unique_products": 20
+  },
+  "missing_values": {},
+  "duplicates": {
+    "exact_duplicate_rows": 0,
+    "duplicate_store_product_date_rows": 0
+  },
+  "negative_values": {},
+  "outliers_units_sold": {
+    "column": "units_sold",
+    "normal_range": "-182.0 to 434.0",
+    "outlier_count": 715
+  },
+  "outliers_price": {
+    "column": "price",
+    "normal_range": "-35.16 to 145.68",
+    "outlier_count": 0
+  },
+  "date_continuity": {
+    "store_product_combos_with_gaps": 0,
+    "total_combos_checked": 100,
+    "details_sample": []
+  }
+}
