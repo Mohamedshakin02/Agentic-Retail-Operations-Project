@@ -3,29 +3,31 @@ agent_tools.py
 ---------------
 Every "tool" the Retail Supervisor Agent can call.
 
-STATUS: STUB VERSION.
-These return realistic fake data so we can build and test agent_graph.py
-right now, without waiting for the real CSVs from teammates A and B.
+STATUS: real implementations now that real data exists throughout the
+pipeline. The old TODO stubs are gone — each function below reads from
+the actual files your pipeline produces, with a safe zero-value
+fallback if a file isn't there yet (so this never crashes, it just
+returns "nothing to report" numbers).
 
-Once these exist, swap the fake data for real reads:
-    data/processed/retail_cleaned.csv      (from A's data_ingestion.py)
-    data/outputs/forecast_output.csv       (from B's forecasting.py)
-    data/outputs/risk_output.csv           (from B's inventory_risk.py)
-    data/outputs/action_recommendation.csv (from B's recommendation.py)
-
-Keep function names and return shapes IDENTICAL when you do that swap —
-agent_graph.py should not need to change.
-
-Docstrings matter here: the agent reads them to decide which tool to call,
-so keep them accurate and specific.
+Three functions are intentionally NOT defined here — they're imported
+from the files that actually own that logic, so there's only ever one
+source of truth for each (the duplicate-logic fix from earlier, now
+actually applied instead of just described):
+    calculate_inventory_cover, detect_stockout_risk  -> inventory_risk.py
+    recommend_business_action, recommend_reorder_quantity -> recommendation.py
+    request_human_approval -> approval.py
 """
 
+import os
+import json
+import pandas as pd
 from datetime import datetime
+from typing import Mapping, Any, Optional
+
 from inventory_risk import calculate_inventory_cover, detect_stockout_risk
 from recommendation import recommend_business_action, recommend_reorder_quantity
 from approval import request_human_approval
-import json
-from typing import Mapping, Any, Optional
+from config import CLEANED_DATA_PATH, FEATURES_DATA_PATH, FORECAST_OUTPUT_PATH
 
 
 def get_sales_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
@@ -33,110 +35,117 @@ def get_sales_summary(store_id: Optional[str] = None, product_id: Optional[str] 
     Return total units sold, revenue, and average selling price.
     Optionally filter by store_id and/or product_id.
     """
-    # TODO(C): replace with a pandas groupby on retail_cleaned.csv
+    if not os.path.exists(CLEANED_DATA_PATH):
+        return {"store_id": store_id or "ALL", "product_id": product_id or "ALL",
+                "total_units_sold": 0, "total_revenue": 0, "avg_selling_price": 0}
+
+    df = pd.read_csv(CLEANED_DATA_PATH)
+    if store_id:
+        df = df[df["store_id"] == store_id]
+    if product_id:
+        df = df[df["product_id"] == product_id]
+
+    if df.empty:
+        return {"store_id": store_id or "ALL", "product_id": product_id or "ALL",
+                "total_units_sold": 0, "total_revenue": 0, "avg_selling_price": 0}
+
+    total_units = df["units_sold"].sum()
+    revenue = (df["units_sold"] * df["price"]).sum()
+    avg_price = round(revenue / total_units, 2) if total_units > 0 else 0
+
     return {
         "store_id": store_id or "ALL",
         "product_id": product_id or "ALL",
-        "total_units_sold": 128430,
-        "total_revenue": 1840000,
-        "avg_selling_price": 14.32,
+        "total_units_sold": int(total_units),
+        "total_revenue": round(float(revenue), 2),
+        "avg_selling_price": avg_price,
     }
 
 
-def get_inventory_summary(store_id: Optional[str] = None, product_id: Optional[str] = None) -> dict:
+def get_inventory_summary(store_id: Optional [str] = None, product_id:Optional[str] = None) -> dict:
     """
     Return current inventory level and average daily sales for a
-    store/product combination.
+    store/product combination, using the most recent available row.
+    Prefers retail_features.csv (has rolling_7_day_avg_sales already
+    computed); falls back to retail_cleaned.csv otherwise.
     """
-    # TODO(C): replace with a lookup on retail_cleaned.csv
+    path = FEATURES_DATA_PATH if os.path.exists(FEATURES_DATA_PATH) else CLEANED_DATA_PATH
+    if not os.path.exists(path):
+        return {"store_id": store_id, "product_id": product_id, "current_inventory": 0, "average_daily_sales": 0}
+
+    df = pd.read_csv(path, parse_dates=["date"])
+    subset = df[(df["store_id"] == store_id) & (df["product_id"] == product_id)].sort_values("date")
+
+    if subset.empty:
+        return {"store_id": store_id, "product_id": product_id, "current_inventory": 0, "average_daily_sales": 0}
+
+    latest = subset.iloc[-1]
+    current_inventory = float(latest["inventory_level"])
+
+    if "rolling_7_day_avg_sales" in subset.columns:
+        average_daily_sales = float(latest["rolling_7_day_avg_sales"])
+    else:
+        average_daily_sales = float(subset["units_sold"].tail(7).mean())
+
     return {
-        "store_id": store_id or "S003",
-        "product_id": product_id or "P001",
-        "current_inventory": 35,
-        "average_daily_sales": 17.2,
+        "store_id": store_id,
+        "product_id": product_id,
+        "current_inventory": current_inventory,
+        "average_daily_sales": round(average_daily_sales, 2),
     }
 
 
 def forecast_demand(store_id: str, product_id: str) -> dict:
     """
-    Predict the next 7-day demand for a given store/product combination.
+    Predict the next 7-day demand for a given store/product combination,
+    by reading forecast_output.csv (produced by forecasting.py).
     """
-    # TODO(C): replace with a row lookup on forecast_output.csv
+    if not os.path.exists(FORECAST_OUTPUT_PATH):
+        return {"store_id": store_id, "product_id": product_id, "forecast_7_day_demand": 0, "model_used": "not_available"}
+
+    df = pd.read_csv(FORECAST_OUTPUT_PATH)
+    row = df[(df["store_id"] == store_id) & (df["product_id"] == product_id)]
+
+    if row.empty:
+        return {"store_id": store_id, "product_id": product_id, "forecast_7_day_demand": 0, "model_used": "not_available"}
+
     return {
         "store_id": store_id,
         "product_id": product_id,
-        "forecast_7_day_demand": 120,
-        "model_used": "baseline_moving_average",  # later: "random_forest"
+        "forecast_7_day_demand": float(row.iloc[0]["forecast_7_day_demand"]),
+        "model_used": "random_forest",
     }
-
-
-# def calculate_inventory_cover(current_inventory: float, average_daily_sales: float) -> dict:
-#     """
-#     Calculate how many days of inventory remain at the current sales pace.
-#     inventory_cover_days = current_inventory / average_daily_sales
-#     """
-#     if average_daily_sales <= 0:
-#         cover_days = float("inf")
-#     else:
-#         cover_days = round(current_inventory / average_daily_sales, 2)
-#     return {"inventory_cover_days": cover_days}
-
-
-# def detect_stockout_risk(inventory_cover_days: float, forecast_7_day_demand: float, current_inventory: float) -> dict:
-#     """
-#     Classify risk into Critical / Warning / Normal / Overstock,
-#     and flag whether forecasted demand exceeds current inventory.
-#     """
-#     if inventory_cover_days < 2:
-#         bucket = "Critical"
-#     elif inventory_cover_days < 5:
-#         bucket = "Warning"
-#     elif inventory_cover_days <= 21:
-#         bucket = "Normal"
-#     else:
-#         bucket = "Overstock"
-
-#     stock_out_risk = forecast_7_day_demand > current_inventory
-
-#     return {"risk_bucket": bucket, "stock_out_risk": stock_out_risk}
 
 
 def analyze_promotion_impact(product_id: str) -> dict:
     """
-    Compare average sales during promotion periods vs non-promotion periods.
+    Compare average sales during promotion/holiday periods vs normal
+    periods for a product. Uses the combined holiday_or_promo_flag
+    column — this dataset doesn't separate "promotion" from "holiday"
+    (documented as a known limitation in model_card.md).
     """
-    # TODO(C): replace with a groupby on promotion_flag in retail_cleaned.csv
+    if not os.path.exists(CLEANED_DATA_PATH):
+        return {"product_id": product_id, "promo_avg_sales": 0, "non_promo_avg_sales": 0, "promotion_lift_pct": 0}
+
+    df = pd.read_csv(CLEANED_DATA_PATH)
+    subset = df[df["product_id"] == product_id]
+
+    if subset.empty or "holiday_or_promo_flag" not in subset.columns:
+        return {"product_id": product_id, "promo_avg_sales": 0, "non_promo_avg_sales": 0, "promotion_lift_pct": 0}
+
+    promo_avg = subset[subset["holiday_or_promo_flag"] == 1]["units_sold"].mean()
+    non_promo_avg = subset[subset["holiday_or_promo_flag"] == 0]["units_sold"].mean()
+
+    promo_avg = 0 if pd.isna(promo_avg) else round(float(promo_avg), 2)
+    non_promo_avg = 0 if pd.isna(non_promo_avg) else round(float(non_promo_avg), 2)
+    lift = round(((promo_avg / non_promo_avg) - 1) * 100, 1) if non_promo_avg > 0 else 0
+
     return {
         "product_id": product_id,
-        "promo_avg_sales": 92,
-        "non_promo_avg_sales": 61,
-        "promotion_lift_pct": 50.8,
+        "promo_avg_sales": promo_avg,
+        "non_promo_avg_sales": non_promo_avg,
+        "promotion_lift_pct": lift,
     }
-
-
-# def recommend_reorder_quantity(forecast_7_day_demand: float, current_inventory: float) -> int:
-#     """
-#     Suggest how many units to reorder: forecasted demand minus current stock,
-#     floored at zero.
-#     """
-#     return max(0, round(forecast_7_day_demand - current_inventory))
-
-
-# def recommend_business_action(risk_bucket: str, stock_out_risk: bool) -> dict:
-#     """
-#     Map a risk bucket to a recommended business action and whether
-#     human approval is required before acting.
-#     """
-#     actions = {
-#         "Critical": "Reorder urgently",
-#         "Warning": "Replenish / monitor",
-#         "Normal": "No action",
-#         "Overstock": "Review stock / consider markdown",
-#     }
-#     return {
-#         "recommended_action": actions.get(risk_bucket, "No action"),
-#         "approval_required": risk_bucket in ("Critical", "Warning"),
-#     }
 
 
 def generate_business_summary(results: dict) -> str:
@@ -154,31 +163,20 @@ def generate_business_summary(results: dict) -> str:
     )
 
 
-# def request_human_approval(action_summary: str) -> dict:
-#     """
-#     Present the recommended action and mark it pending human approval.
-#     The actual Approve/Reject click is handled later by the Streamlit UI
-#     and approval.py — this just creates the pending record.
-#     """
-#     return {
-#         "action_summary": action_summary,
-#         "approval_status": "pending",
-#         "requested_at": datetime.now().isoformat(),
-#     }
-
-
 _trace_log = []  # in-memory for now; later this can also write to a file
 
 
-#def log_agent_trace(step_name: str, tool_input: dict, tool_output: dict) -> None:
 def log_agent_trace(step_name: str, tool_input: Mapping[str, Any], tool_output: Mapping[str, Any]) -> None:
     """
     Record one step of the agent's reasoning, for the Agent Trace UI page.
+    Uses Mapping instead of dict so this happily accepts AgentState (a
+    TypedDict) as well as plain dicts — see the earlier note on why
+    dict and TypedDict don't satisfy each other for type checkers.
     """
     _trace_log.append({
         "step": step_name,
-        "input": tool_input,
-        "output": tool_output,
+        "input": dict(tool_input),
+        "output": dict(tool_output),
         "timestamp": datetime.now().isoformat(),
     })
 
@@ -189,8 +187,7 @@ def get_trace_log() -> list:
 
 
 if __name__ == "__main__":
-    # Quick manual test, no agent or LangGraph needed yet.
-    # Run with: python src/agent_tools.py
+    # Quick manual test — run with: python src/agent_tools.py
     inv = get_inventory_summary("S003", "P001")
     fc = forecast_demand("S003", "P001")
     cover = calculate_inventory_cover(inv["current_inventory"], inv["average_daily_sales"])
@@ -201,4 +198,5 @@ if __name__ == "__main__":
 
     combined = {**inv, **fc, **cover, **risk, **action}
     print(json.dumps(combined, indent=2))
-    print("\nSummary:", generate_business_summary(combined))
+    print("\nSales summary (S003/P001):", get_sales_summary("S003", "P001"))
+    print("Promotion impact (P001):", analyze_promotion_impact("P001"))

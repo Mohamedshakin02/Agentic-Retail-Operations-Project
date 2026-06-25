@@ -22,6 +22,39 @@ import os
 import glob
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from langchain_ollama import ChatOllama
+
+_llm = None
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatOllama(model="mistral")
+    return _llm
+
+
+def rephrase_with_ollama(question: str, retrieved_text: str) -> str:
+    """
+    Asks the local LLM to turn the raw retrieved passage into a natural
+    answer. Falls back to the raw text if Ollama isn't running, so a
+    missing/stopped Ollama never crashes the whole answer.
+    """
+    try:
+        llm = _get_llm()
+        prompt = (
+            f"Using ONLY this information, answer the question naturally "
+            f"in 1-2 sentences:\n\n{retrieved_text}\n\nQuestion: {question}"
+        )
+        response = llm.invoke(prompt)
+        content = getattr(response, "content", response)
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return " ".join(str(item) for item in content)
+        return str(content)
+    except Exception as e:
+        print(f"Ollama not available ({e}) — returning raw retrieved text instead.")
+        return retrieved_text
 
 
 _model = None  # loaded once, lazily, on first use
@@ -99,9 +132,9 @@ def answer_doc_question(question: str, docs_folder: str = "docs/") -> dict:
     top_matches = query_docs(question, chunks, doc_matrix, top_k=2)
 
     answer_text = "\n\n".join(m["text"] for m in top_matches)
+    natural_answer = rephrase_with_ollama(question, answer_text)
     sources = list({m["source"] for m in top_matches})
-
-    return {"question": question, "answer": answer_text, "sources": sources}
+    return {"question": question, "answer": natural_answer, "sources": sources}
 
 
 if __name__ == "__main__":

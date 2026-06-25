@@ -1,0 +1,2 @@
+action_id,date,store_id,product_id,recommended_action,recommended_quantity,approval_status,approved_by,approval_timestamp
+S003_P001_TEST,2026-06-25,S003,P001,Reorder urgently,100,approved,intern_demo,2026-06-25T11:24:23.221654

@@ -3,19 +3,24 @@ agent_graph.py
 ---------------
 Wires agent_tools.py into an actual LangGraph agent: the Retail Supervisor Agent.
 
-STATUS: handles ONE store/product question end-to-end, e.g.
-"Why is Product P001 at Store S003 at risk?" — this matches the doc's
-Module 9 example flow exactly.
-
-NOT YET HANDLED: "Find the top 5 products at risk" needs scanning every
-store/product combination. That's a small loop we add ON TOP of this
-once this core flow is proven to work — see the note at the bottom.
+Handles TWO question shapes now:
+1. ONE specific store/product, e.g. "Why is P001 at Store S003 at risk?"
+   -> retail_agent.invoke({"store_id": ..., "product_id": ...})
+2. "Find the top N products at risk" (the project's headline demo question)
+   -> find_top_risk_products(n=5)
+   Step 1 scans the whole risk table to find the N most urgent products
+   (a cheap lookup). Step 2 runs the FULL single-item agent pipeline on
+   each of those N — that second part is the genuinely agentic step,
+   investigating each flagged product individually.
 """
 
+import os
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
+import pandas as pd
 
 import agent_tools as tools
+from recommendation import get_top_risk_products, _build_dummy_risk_table
 
 
 class AgentState(TypedDict):
@@ -87,7 +92,6 @@ def node_request_approval(state: AgentState) -> dict:
     return {"approval": result}
 
 
-# --- Build the graph: register every station, then connect the belts ---
 builder = StateGraph(AgentState)
 
 builder.add_node("get_inventory", node_get_inventory)
@@ -110,13 +114,62 @@ builder.add_edge("request_approval", END)
 retail_agent = builder.compile()
 
 
+def find_top_risk_products(n: int = 5, risk_data_path: str = "data/outputs/risk_output.csv") -> list:
+    """
+    Answers "find the top N products at stock-out risk" — the project's
+    headline demo question.
+
+    Step 1: scan the whole risk table for the N most urgent products
+            (reuses recommendation.py's get_top_risk_products — no
+            duplicate logic here, same lesson as before).
+    Step 2: run the FULL single-item agent pipeline on each of those N,
+            so every result has a real investigated summary and a
+            pending approval, not just a filtered table row.
+
+    Falls back to recommendation.py's dummy risk table if the real
+    risk_output.csv isn't ready yet.
+    """
+    if os.path.exists(risk_data_path):
+        risk_df = pd.read_csv(risk_data_path)
+    else:
+        print(f"{risk_data_path} not found yet — using dummy risk data to test this.")
+        risk_df = _build_dummy_risk_table()
+
+    top_candidates = get_top_risk_products(risk_df, n=n)
+    tools.log_agent_trace(
+        "find_top_risk_products_scan",
+        {"n": n},
+        {"found": len(top_candidates), "products": top_candidates["product_id"].tolist()},
+    )
+
+    investigated_results = []
+    for _, row in top_candidates.iterrows():
+        result = retail_agent.invoke({"store_id": row["store_id"], "product_id": row["product_id"]})
+        investigated_results.append({
+            "store_id": row["store_id"],
+            "product_id": row["product_id"],
+            "risk_bucket": row["risk_bucket"],
+            "summary": result["summary"],
+            "approval": result["approval"],
+        })
+
+    return investigated_results
+
+
 if __name__ == "__main__":
     # Run with: python src/agent_graph.py
-    result = retail_agent.invoke({"store_id": "S003", "product_id": "P001"})
 
+    print("=== Single product question ===")
+    result = retail_agent.invoke({"store_id": "S003", "product_id": "P001"})
     print("Summary:", result["summary"])
     print("Approval:", result["approval"])
 
-    print("\n--- Agent Trace ---")
+    print("\n=== Top 5 at risk question ===")
+    top5 = find_top_risk_products(n=5)
+    for item in top5:
+        print(f"\n{item['product_id']} @ {item['store_id']} ({item['risk_bucket']}):")
+        print(" ", item["summary"])
+
+    print("\n--- Full Agent Trace ---")
     for step in tools.get_trace_log():
         print("-", step["step"])
