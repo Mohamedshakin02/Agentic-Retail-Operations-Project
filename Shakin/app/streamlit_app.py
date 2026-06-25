@@ -17,28 +17,90 @@ st.markdown("""
     <style>
     .main { background-color: #0e1117; }
     h1, h2, h3 { color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
-    .stMetric { background-color: #1e2530; padding: 15px; border-radius: 5px; border-left: 5px solid #00ffcc; }
-    .chat-box { background-color: #1e2530; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 20px; }
+    
+    /* Improved Contrast for Metric Cards */
+    .stMetric { 
+        background-color: #1e2530; 
+        padding: 15px; 
+        border-radius: 5px; 
+        border-left: 5px solid #00ffcc; 
+    }
+    [data-testid="stMetricLabel"] p {
+        color: #b0bec5 !important; /* Light grey for labels */
+        font-weight: 600 !important;
+    }
+    [data-testid="stMetricValue"] div {
+        color: #ffffff !important; /* Bright white for values */
+    }
+    
+    /* Improved Contrast for Agent Chat Box */
+    .chat-box { 
+        background-color: #1e2530; 
+        padding: 20px; 
+        border-radius: 10px; 
+        border: 1px solid #333; 
+        margin-bottom: 20px; 
+        color: #ffffff;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # --- Data Loading ---
 @st.cache_data
 def load_data():
+    clean_df = pd.DataFrame()
+    risk_df = pd.DataFrame()
+    is_mock_risk = False
+    
+    # 1. Try to load Clean Data
     try:
         clean_df = pd.read_csv("data/processed/retail_cleaned.csv", parse_dates=['date'])
-        risk_df = pd.read_csv("data/outputs/risk_output.csv", parse_dates=['date'])
-        
         # Ensure revenue is calculated for dashboards
         if 'revenue' not in clean_df.columns:
             clean_df['revenue'] = clean_df['units_sold'] * clean_df['price']
-            
-        return clean_df, risk_df
     except FileNotFoundError:
-        st.error("Data files not found. Please ensure the data cleaning and inventory risk scripts have been run.")
-        return pd.DataFrame(), pd.DataFrame()
+        st.error("Cleaned data file not found. Please ensure the data cleaning script has been run.")
+        return clean_df, risk_df, is_mock_risk
 
-clean_df, risk_df = load_data()
+    # 2. Try to load Risk Data OR Mock it for UI Preview
+    try:
+        risk_df = pd.read_csv("data/outputs/risk_output.csv", parse_dates=['date'])
+    except FileNotFoundError:
+        is_mock_risk = True
+        # MOCK DATA GENERATOR: If the ML model hasn't run, generate fake data for the UI
+        if not clean_df.empty:
+            latest_date = clean_df['date'].max()
+            latest_data = clean_df[clean_df['date'] == latest_date].copy()
+            np.random.seed(42) # Keeps the random fake data consistent
+            
+            # Invent fake 7-day demand predictions
+            latest_data['forecast_7_day_demand'] = np.random.randint(10, 250, size=len(latest_data))
+            
+            # Calculate metrics based on the fake demand
+            latest_data['inventory_cover_days'] = np.where(
+                latest_data['forecast_7_day_demand'] > 0,
+                latest_data['inventory_level'] / (latest_data['forecast_7_day_demand'] / 7),
+                999
+            )
+            
+            # Assign fake risk buckets
+            conditions = [
+                (latest_data['inventory_cover_days'] < 2),
+                (latest_data['inventory_cover_days'] >= 2) & (latest_data['inventory_cover_days'] < 5),
+                (latest_data['inventory_cover_days'] >= 5) & (latest_data['inventory_cover_days'] <= 21),
+                (latest_data['inventory_cover_days'] > 21)
+            ]
+            choices = ['Critical', 'Warning', 'Normal', 'Overstock']
+            latest_data['risk_bucket'] = np.select(conditions, choices, default='Unknown')
+            latest_data['stock_out_risk_flag'] = (latest_data['forecast_7_day_demand'] > latest_data['inventory_level']).astype(int)
+            
+            risk_df = latest_data[['date', 'store_id', 'product_id', 'inventory_level', 
+                                   'forecast_7_day_demand', 'inventory_cover_days', 
+                                   'risk_bucket', 'stock_out_risk_flag']]
+            
+    return clean_df, risk_df, is_mock_risk
+
+clean_df, risk_df, is_mock_risk = load_data()
 
 # --- Sidebar Navigation ---
 st.sidebar.title("🤖 Retail Copilot")
@@ -57,9 +119,43 @@ page = st.sidebar.radio("Navigation", [
 st.sidebar.markdown("---")
 st.sidebar.info("Powered by XGBoost & LangGraph")
 
+# Add a warning in the sidebar if we are using fake UI preview data
+if is_mock_risk:
+    st.sidebar.warning("⚠️ Preview Mode: ML output files missing. Using simulated forecasts to render UI.")
+
 # ==========================================
 # PAGE 1: HOME
 # ==========================================
+st.markdown("""
+<style>
+.home-card {
+    background-color: #1e2530;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    height: 280px;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+
+/* Equal height for st.info and st.success boxes */
+div[data-testid="stAlert"] {
+    min-height: 180px !important;
+    height: 180px !important;
+}
+
+/* Align the alert boxes content */
+div[data-testid="stAlert"] > div {
+    height: 100%;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 if page == "🏠 1. Home":
     st.title("Agentic Retail Operations Copilot")
     
@@ -74,14 +170,7 @@ if page == "🏠 1. Home":
         * Contains daily retail sales, inventory, pricing, weather, and promotions.
         * Used to predict demand and assign business risk buckets.
         """)
-        
-        st.markdown("### Overall Workflow")
-        st.write("1. Data Ingestion & Feature Engineering")
-        st.write("2. XGBoost Demand Forecasting")
-        st.write("3. Risk & Recommendation Engine")
-        st.write("4. LangGraph Agent Task Planning")
-        st.write("5. Human-in-the-Loop Approval")
-        
+
     with col2:
         st.markdown("### Agent Capabilities")
         st.success("""
@@ -89,48 +178,133 @@ if page == "🏠 1. Home":
         * 📈 **Forecasts** demand using ML tools.
         * 💡 **Recommends** reorders, markdowns, and pre-stocking.
         * 🛡️ **Requests Approval** before generating simulated actions.
-        * 🗣️ **Answers** natural language business questions.
+        * 🗣️ **Answers** natural language business questions. 
         """)
+
+    st.markdown("### Overall Workflow")
+    st.write("1. Data Ingestion & Feature Engineering")
+    st.write("2. XGBoost Demand Forecasting")
+    st.write("3. Risk & Recommendation Engine")
+    st.write("4. LangGraph Agent Task Planning")
+    st.write("5. Human-in-the-Loop Approval")
 
 # ==========================================
 # PAGE 2: DATA QUALITY
 # ==========================================
 elif page == "🧮 2. Data Quality":
+
     st.title("🧮 Data Quality Assessment")
     st.write("Review dataset readiness for machine learning modeling.")
-    
+
     if not clean_df.empty:
+
+        # Main Metrics
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Rows", f"{len(clean_df):,}")
-        col2.metric("Total Columns", len(clean_df.columns))
-        col3.metric("Missing Values", clean_df.isna().sum().sum())
-        col4.metric("Duplicate Count", clean_df.duplicated().sum())
-        
-        col5, col6, col7, col8 = st.columns(4)
-        col5.metric("Date Range", f"{clean_df['date'].min().date()} to {clean_df['date'].max().date()}")
-        col6.metric("Number of Stores", clean_df['store_id'].nunique())
-        col7.metric("Number of Products", clean_df['product_id'].nunique())
-        col8.metric("Outlier Summary", "Handled (Log Transformed)")
-        
+
+        col1.metric(
+            "Total Rows",
+            f"{len(clean_df):,}"
+        )
+
+        col2.metric(
+            "Total Columns",
+            len(clean_df.columns)
+        )
+
+        col3.metric(
+            "Missing Values",
+            clean_df.isna().sum().sum()
+        )
+
+        col4.metric(
+            "Duplicate Count",
+            clean_df.duplicated().sum()
+        )
+
+
         st.markdown("---")
-        
+
+
+        # Dataset Summary
+        st.subheader("Dataset Summary")
+
+        summary_df = pd.DataFrame({
+            "Category": [
+                "Date Range",
+                "Number of Stores",
+                "Number of Products",
+                "Outlier Handling"
+            ],
+            "Details": [
+                f"{clean_df['date'].min().date()} → {clean_df['date'].max().date()}",
+                f"{clean_df['store_id'].nunique()} Stores",
+                f"{clean_df['product_id'].nunique()} Products",
+                "Handled using Log Transformation"
+            ]
+        })
+
+        st.dataframe(
+            summary_df,
+            hide_index=True,
+            use_container_width=True
+        )
+
+
+        st.markdown("---")
+
+
+        # Charts
         c1, c2, c3 = st.columns(3)
+
         with c1:
             st.subheader("Missing Values")
+
             missing_df = clean_df.isna().sum().reset_index()
             missing_df.columns = ['Column', 'Missing Count']
-            fig_miss = px.bar(missing_df, x='Column', y='Missing Count', template='plotly_dark')
-            st.plotly_chart(fig_miss, use_container_width=True)
-            
+
+            fig_miss = px.bar(
+                missing_df,
+                x='Column',
+                y='Missing Count',
+                template='plotly_dark'
+            )
+
+            st.plotly_chart(
+                fig_miss,
+                use_container_width=True
+            )
+
+
         with c2:
             st.subheader("Sales Distribution")
-            fig_sales = px.histogram(clean_df, x="units_sold", nbins=40, template='plotly_dark')
-            st.plotly_chart(fig_sales, use_container_width=True)
-            
+
+            fig_sales = px.histogram(
+                clean_df,
+                x="units_sold",
+                nbins=40,
+                template='plotly_dark'
+            )
+
+            st.plotly_chart(
+                fig_sales,
+                use_container_width=True
+            )
+
+
         with c3:
             st.subheader("Inventory Distribution")
-            fig_inv = px.histogram(clean_df, x="inventory_level", nbins=40, template='plotly_dark', color_discrete_sequence=['#00ffcc'])
-            st.plotly_chart(fig_inv, use_container_width=True)
+
+            fig_inv = px.histogram(
+                clean_df,
+                x="inventory_level",
+                nbins=40,
+                template='plotly_dark'
+            )
+
+            st.plotly_chart(
+                fig_inv,
+                use_container_width=True
+            )
 
 # ==========================================
 # PAGE 3: SALES DASHBOARD
@@ -213,12 +387,20 @@ elif page == "📈 5. Forecast Dashboard":
     st.title("📈 Demand Forecast Accuracy")
     
     # Using the metrics from the XGBoost run
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Forecast Horizon", "7 Days")
-    col2.metric("MAE", "59.74 Units")
-    col3.metric("RMSE", "77.17 Units")
+    # Row 1 (3 metrics)
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Forecast Period", "Next 7 Days")
+    col2.metric("MAE", "59.74")
+    col3.metric("RMSE", "77.17")
+
+
+    # Row 2 (2 metrics)
+    col4, col5 = st.columns(2)
+
     col4.metric("WMAPE", "43.96%")
-    col5.metric("Model Used", "XGBoost")
+    col5.metric("Model", "XGBoost")
+
     
     st.markdown("---")
     
@@ -315,6 +497,27 @@ elif page == "💬 7. Agent Chat":
     * *Which stores need urgent replenishment?*
     * *Summarize this week’s business performance.*
     """)
+
+    st.markdown("""
+<style>
+
+/* Approve button */
+div.stButton > button[kind="primary"] {
+    background-color: #00c853 !important;
+    color: white !important;
+    border: none !important;
+}
+
+
+/* Reject button - target second button */
+div.stButton:nth-of-type(2) > button {
+    background-color: #ff0000 !important;
+    color: white !important;
+    border: none !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
     
     query = st.text_input("", placeholder="[ Find the top 5 products at stock-out risk next week ]")
     
@@ -330,10 +533,14 @@ elif page == "💬 7. Agent Chat":
             st.write("3. Review markdown for Product P009")
             
             st.markdown("**Approval Required:**")
+
             c1, c2, c3 = st.columns([1,1,8])
-            with c1: st.button("Approve", type="primary")
-            with c2: st.button("Reject")
-            st.markdown('</div>', unsafe_allow_html=True)
+
+            with c1:
+                st.button("Approve", type="primary")
+
+            with c2:
+                st.button("Reject")
 
 # ==========================================
 # PAGE 8: AGENT TRACE
